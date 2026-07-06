@@ -38,6 +38,18 @@ TypeScript, Node, WebSockets, SQLite. Same recipe as the siblings.
 Watch the repo, open an issue, or come argue about which @functions shipped in
 Release 1A. If your fingers still remember `/WEY`, I want to hear from you.
 
+## Trademark & affiliation
+
+Web123 is an independent, clean-room reimplementation built for educational and
+software-preservation purposes, in the same spirit as its siblings
+[WebWordStar](https://github.com/DDecoene/WebWordStar) and
+[WebBaseIII](https://github.com/DDecoene/WebBaseIII). It is **not** affiliated with,
+endorsed by, or connected to Lotus Development Corporation, IBM, HCL, or any past or
+present holder of the "Lotus 1-2-3" trademark. The name "Lotus 1-2-3" appears here
+only to describe the historical program whose interface this project reimplements. No
+original Lotus 1-2-3 code or documentation text is used: behavior is implemented from
+publicly documented interfaces and independent testing against files.
+
 ## License
 
-AGPL-3.0
+[AGPL-3.0-only](LICENSE). Source files carry SPDX license headers.

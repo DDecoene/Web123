@@ -1,0 +1,17 @@
+{
+  "name": "Web123",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "forwardPorts": [5275, 5276],
+  "portsAttributes": {
+    "5275": {
+      "label": "Web123 (open this one)",
+      "onAutoForward": "openPreview"
+    },
+    "5276": {
+      "label": "WebSocket server",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "npm install",
+  "postAttachCommand": "npm run dev"
+}
