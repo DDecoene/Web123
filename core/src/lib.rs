@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 use std::collections::HashMap;
+use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Debug, PartialEq)]
 enum CellValue {
@@ -59,6 +60,29 @@ fn parse_input(input: &str) -> CellValue {
     match trimmed.parse::<f64>() {
         Ok(n) => CellValue::Number(n),
         Err(_) => CellValue::Empty,
+    }
+}
+
+#[wasm_bindgen]
+pub struct Spreadsheet {
+    core: SpreadsheetCore,
+}
+
+#[wasm_bindgen]
+impl Spreadsheet {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Spreadsheet {
+        Spreadsheet { core: SpreadsheetCore::new() }
+    }
+
+    #[wasm_bindgen(js_name = setCell)]
+    pub fn set_cell(&mut self, reference: &str, input: &str) {
+        self.core.set_cell(reference, input);
+    }
+
+    #[wasm_bindgen(js_name = getDisplay)]
+    pub fn get_display(&self, reference: &str) -> String {
+        self.core.get_display(reference)
     }
 }
 
