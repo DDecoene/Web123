@@ -2,3 +2,4 @@
 
 mod model;
 mod parser;
+mod functions;
