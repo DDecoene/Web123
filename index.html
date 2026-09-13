@@ -3,12 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <title>Web123</title>
+    <style>
+      body { font-family: monospace; }
+      table { border-collapse: collapse; }
+      th, td { border: 1px solid #ccc; padding: 2px 6px; min-width: 3em; text-align: right; }
+      td.active { outline: 2px solid #2563eb; }
+      #mode-indicator { font-weight: bold; margin-bottom: 4px; }
+    </style>
   </head>
   <body>
     <div id="app">
-      <label>A1 <input id="a1" type="text" /></label>
-      <label>A2 <input id="a2" type="text" /></label>
-      <div>B1 (=@SUM(A1,A2)): <span id="b1"></span></div>
+      <div id="mode-indicator">READY</div>
+      <div id="grid-container"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
