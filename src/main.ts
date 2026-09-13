@@ -61,21 +61,42 @@ function renderGrid(sheet: Spreadsheet) {
   document.getElementById('mode-indicator')!.textContent = sheet.getMode();
 }
 
+// The WASM module's fetch/compile/instantiate is asynchronous, so there is an
+// unavoidable gap between the page becoming visible/interactive and the sheet
+// being ready to handle keys. Attach the listener immediately and queue any
+// keys that arrive during that gap so they aren't silently lost.
+let sheet: Spreadsheet | null = null;
+const pendingKeys: string[] = [];
+
+function handleForwardedKey(key: string) {
+  if (sheet) {
+    sheet.handleKey(key);
+    renderGrid(sheet);
+  } else {
+    pendingKeys.push(key);
+  }
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key.length === 1 || FORWARDED_KEYS.has(e.key)) {
+    e.preventDefault();
+    handleForwardedKey(e.key);
+  }
+});
+
 async function main() {
   await init();
-  const sheet = new Spreadsheet();
+  sheet = new Spreadsheet();
 
   const gridContainer = document.querySelector<HTMLDivElement>('#grid-container')!;
   buildGrid(gridContainer);
-  renderGrid(sheet);
 
-  window.addEventListener('keydown', (e) => {
-    if (e.key.length === 1 || FORWARDED_KEYS.has(e.key)) {
-      e.preventDefault();
-      sheet.handleKey(e.key);
-      renderGrid(sheet);
-    }
-  });
+  for (const key of pendingKeys) {
+    sheet.handleKey(key);
+  }
+  pendingKeys.length = 0;
+
+  renderGrid(sheet);
 }
 
 main();
