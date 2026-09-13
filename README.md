@@ -31,7 +31,23 @@ Design phase. Nothing to run yet.
 
 ## Stack (planned)
 
-TypeScript, Node, WebSockets, SQLite. Same recipe as the siblings.
+Rust, compiled to WebAssembly, for the entire spreadsheet core: formula
+engine, dependency graph and recalculation, the CRDT document (via
+Automerge), WebRTC networking, and WKS-style file interchange. TypeScript is
+a thin rendering and input shell around it — no spreadsheet logic lives in
+JavaScript.
+
+Collaboration is peer-to-peer and local-first: documents sync directly
+between browsers over WebRTC, merge cleanly when peers who edited offline
+reconnect, and don't depend on any always-on server to function. The only
+outside dependency is a public, WebTorrent-style signaling tracker used
+solely to establish the initial peer connection — it never sees document
+content. An on-prem server (the original vision) remains optional, useful
+for durability, but never required.
+
+This departs from the trinity's original shared TypeScript/Node/WebSockets/
+SQLite recipe — Web123 is the odd one out, trading the shared backend model
+for the "no infrastructure to run" goal.
 
 ## Want in?
 
