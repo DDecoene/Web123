@@ -209,7 +209,10 @@ impl Editor {
                     self.slash_stage = SlashStage::Closed;
                     self.mode = Mode::Ready;
                 }
-                _ => {}
+                _ => {
+                    self.slash_stage = SlashStage::Closed;
+                    self.mode = Mode::Ready;
+                }
             },
             SlashStage::NamingRange { range, buffer } => match key {
                 "Enter" => {
@@ -225,7 +228,10 @@ impl Editor {
                     buffer.pop();
                 }
                 k if k.chars().count() == 1 => buffer.push_str(k),
-                _ => {}
+                _ => {
+                    self.slash_stage = SlashStage::Closed;
+                    self.mode = Mode::Ready;
+                }
             },
             SlashStage::Closed => {
                 self.mode = Mode::Ready;
@@ -376,5 +382,30 @@ mod tests {
         core.set_cell("A1", "=B1");
         core.set_cell("B1", "=A1");
         assert!(core.is_error(a("A1")));
+    }
+
+    #[test]
+    fn unrecognized_key_in_picking_range_closes_slash_menu() {
+        let mut core = SpreadsheetCore::new();
+        let mut editor = Editor::new();
+        editor.handle_key("/", &mut core);
+        assert_eq!(editor.mode(), Mode::SlashMenu);
+        editor.handle_key("r", &mut core);
+        // Now in PickingRange stage, send an unrecognized key
+        editor.handle_key("x", &mut core);
+        assert_eq!(editor.mode(), Mode::Ready);
+    }
+
+    #[test]
+    fn unrecognized_key_in_naming_range_closes_slash_menu() {
+        let mut core = SpreadsheetCore::new();
+        let mut editor = Editor::new();
+        editor.handle_key("/", &mut core);
+        assert_eq!(editor.mode(), Mode::SlashMenu);
+        editor.handle_key("r", &mut core);
+        editor.handle_key("Enter", &mut core);
+        // Now in NamingRange stage, send an unrecognized key (function key)
+        editor.handle_key("F2", &mut core);
+        assert_eq!(editor.mode(), Mode::Ready);
     }
 }
