@@ -43,3 +43,9 @@ docs/superpowers/
 # Playwright output
 test-results/
 playwright-report/
+
+# Rust build output
+target/
+
+# Generated wasm-bindgen bindings (rebuilt via `npm run build:wasm`)
+src/wasm/

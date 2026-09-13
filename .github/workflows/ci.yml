@@ -7,6 +7,17 @@ on:
     branches: [main, 'release/**']
 
 jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - run: cargo test --manifest-path core/Cargo.toml
+
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -16,6 +27,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - run: npm ci
 
@@ -32,6 +49,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - run: npm ci
 
