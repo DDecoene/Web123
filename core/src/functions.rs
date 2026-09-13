@@ -151,6 +151,9 @@ fn eval_vlookup(args: &[Expr], lookup: &dyn CellLookup) -> CellValue {
     }
     for row in r0..=r1 {
         let candidate = lookup.value_of(CellAddr { col: c0, row });
+        if let CellValue::Error(_) = candidate {
+            return CellValue::Error(ErrorKind::PropagatedError);
+        }
         if values_equal(&candidate, &key) {
             let target = CellAddr { col: c0 + (col_index as u32 - 1), row };
             return lookup.value_of(target);
@@ -280,5 +283,20 @@ mod tests {
         s.named.insert("SALES".to_string(), (a("A1"), a("A2")));
         let expr = Expr::FunctionCall(FnName::Sum, vec![Expr::NamedRange("SALES".to_string())]);
         assert_eq!(evaluate(&expr, &s), CellValue::Number(7.0));
+    }
+
+    #[test]
+    fn vlookup_propagates_error_from_key_column() {
+        let s = sheet(&[
+            ("A1", CellValue::Error(ErrorKind::DivByZero)),
+            ("B1", CellValue::Number(1.0)),
+            ("A2", CellValue::Text("pear".to_string())),
+            ("B2", CellValue::Number(2.0)),
+        ]);
+        let expr = Expr::FunctionCall(
+            FnName::VLookup,
+            vec![Expr::Text("pear".to_string()), Expr::Range(a("A1"), a("B2")), Expr::Number(2.0)],
+        );
+        assert_eq!(evaluate(&expr, &s), CellValue::Error(ErrorKind::PropagatedError));
     }
 }
