@@ -27,7 +27,9 @@ does `COPY TO report TYPE WKS`, Web123 opens it. Files, not APIs.
 
 ## Status
 
-Design phase. Nothing to run yet.
+Foundation slice runs: a Rust/WASM core evaluates a two-cell `@SUM`
+formula live in the browser. No networking, no CRDT sync, no full formula
+library, no dependency graph yet — those come next.
 
 ## Stack (planned)
 
