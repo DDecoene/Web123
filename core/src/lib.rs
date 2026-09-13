@@ -4,6 +4,7 @@ mod model;
 mod parser;
 mod functions;
 mod engine;
+mod editor;
 
 use wasm_bindgen::prelude::*;
 
