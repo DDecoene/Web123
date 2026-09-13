@@ -9,22 +9,24 @@ reports, fixes, features, and documentation alike.
 ```bash
 git clone https://github.com/DDecoene/Web123.git
 cd Web123
-nvm use            # Node 22 (see .nvmrc)
+nvm use                              # Node 22 (see .nvmrc)
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
 npm install
-npm run dev        # Vite on http://localhost:5275 + WS server on :5276
+npm run dev                          # builds the WASM core, then Vite on http://localhost:5275
 ```
 
-Open `http://localhost:5275` — you'll be redirected to a fresh worksheet. Visit
-`/demo` for a seeded feature-showcase worksheet.
+Open `http://localhost:5275`.
 
 ## Running tests
 
 ```bash
-npm test                # Vitest unit + integration tests
-npx playwright test     # Playwright end-to-end browser tests
+cargo test --manifest-path core/Cargo.toml   # Rust unit/property tests (the core logic)
+npm test                                      # Vitest tests (TypeScript shell)
+npx playwright test                           # Playwright end-to-end browser tests
 ```
 
-Both suites must pass before a PR can merge (CI enforces this).
+All three suites must pass before a PR can merge (CI enforces this).
 
 ## Branching model — GitFlow with milestone release branches
 
@@ -75,9 +77,9 @@ that violate them will be declined:
    messages, or announcements may suggest the project is official, licensed,
    authorized by, or affiliated with any past or present Lotus 1-2-3 trademark
    holder.
-5. **Keep license notices intact.** Source files under `server/` and `src/`
-   carry an SPDX `AGPL-3.0-only` header — keep it when editing and add it to
-   new source files.
+5. **Keep license notices intact.** Source files under `core/` and `src/`
+   carry an SPDX `PolyForm-Noncommercial-1.0.0` header — keep it when editing
+   and add it to new source files.
 6. If a feature can only be implemented correctly by consulting proprietary
    or leaked material, **stop and open an issue to discuss it** instead of
    proceeding.
@@ -91,4 +93,4 @@ command path or @function) help a lot for a keyboard-first application.
 ## License
 
 By contributing you agree that your contributions are licensed under the
-[AGPL-3.0-only](LICENSE) license that covers the project.
+[PolyForm Noncommercial 1.0.0](LICENSE) license that covers the project.

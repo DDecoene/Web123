@@ -68,4 +68,6 @@ publicly documented interfaces and independent testing against files.
 
 ## License
 
-[AGPL-3.0-only](LICENSE). Source files carry SPDX license headers.
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal, educational, and
+noncommercial use; commercial use is not permitted. Source files carry SPDX
+license headers.
