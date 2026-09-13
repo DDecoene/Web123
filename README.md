@@ -27,9 +27,12 @@ does `COPY TO report TYPE WKS`, Web123 opens it. Files, not APIs.
 
 ## Status
 
-Foundation slice runs: a Rust/WASM core evaluates a two-cell `@SUM`
-formula live in the browser. No networking, no CRDT sync, no full formula
-library, no dependency graph yet — those come next.
+Recalc engine runs: a full formula parser (arithmetic, ranges, named
+ranges), a dependency graph with dirty-propagation recalculation,
+`@SUM`/`@AVG`/`@IF`/`@VLOOKUP`, and a Lotus 1-2-3-style keyboard-driven
+grid (mode indicator, `F2`/`F5`/`F9`, POINT-mode formula construction, a
+minimal slash menu). No CRDT sync, no P2P networking, no file
+interchange yet — those come next.
 
 ## Stack (planned)
 
