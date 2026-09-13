@@ -8,19 +8,21 @@ mod editor;
 
 use wasm_bindgen::prelude::*;
 
+use editor::{Editor, Mode};
 use engine::SpreadsheetCore;
 use model::CellAddr;
 
 #[wasm_bindgen]
 pub struct Spreadsheet {
     core: SpreadsheetCore,
+    editor: Editor,
 }
 
 #[wasm_bindgen]
 impl Spreadsheet {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Spreadsheet {
-        Spreadsheet { core: SpreadsheetCore::new() }
+        Spreadsheet { core: SpreadsheetCore::new(), editor: Editor::new() }
     }
 
     #[wasm_bindgen(js_name = setCell)]
@@ -34,5 +36,43 @@ impl Spreadsheet {
             Some(addr) => self.core.display(addr),
             None => String::new(),
         }
+    }
+
+    #[wasm_bindgen(js_name = handleKey)]
+    pub fn handle_key(&mut self, key: &str) {
+        self.editor.handle_key(key, &mut self.core);
+    }
+
+    #[wasm_bindgen(js_name = getMode)]
+    pub fn get_mode(&self) -> String {
+        if self.editor.mode() == Mode::Ready && self.core.is_error(self.editor.active_cell()) {
+            return "ERROR".to_string();
+        }
+        mode_name(self.editor.mode()).to_string()
+    }
+
+    #[wasm_bindgen(js_name = getActiveCell)]
+    pub fn get_active_cell(&self) -> String {
+        self.editor.active_cell().to_string()
+    }
+
+    #[wasm_bindgen(js_name = getEditBuffer)]
+    pub fn get_edit_buffer(&self) -> String {
+        self.editor.edit_buffer().to_string()
+    }
+
+    #[wasm_bindgen(js_name = getPointCell)]
+    pub fn get_point_cell(&self) -> String {
+        self.editor.point_cell().to_string()
+    }
+}
+
+fn mode_name(m: Mode) -> &'static str {
+    match m {
+        Mode::Ready => "READY",
+        Mode::Edit => "EDIT",
+        Mode::Point => "POINT",
+        Mode::SlashMenu => "MENU",
+        Mode::GoTo => "GOTO",
     }
 }
