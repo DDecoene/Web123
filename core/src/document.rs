@@ -29,6 +29,7 @@ impl DocumentStore {
             let _ = self.doc.put(&self.cells, key.as_str(), input);
         }
         self.core.set_cell(reference, input);
+        self.spawn_save();
     }
 
     pub fn display(&self, addr: CellAddr) -> String {
@@ -51,10 +52,36 @@ impl DocumentStore {
         let value = format!("{from}:{to}");
         let _ = self.doc.put(&self.named_ranges, name.as_str(), value.as_str());
         self.core.define_named_range(name, from, to);
+        self.spawn_save();
     }
 
     pub fn save_bytes(&mut self) -> Vec<u8> {
         self.doc.save()
+    }
+
+    /// Boots a store from whatever's in IndexedDB, or an empty document if
+    /// there's nothing there yet (first run, or storage unavailable).
+    pub async fn load_from_storage() -> Self {
+        match crate::storage::load().await {
+            Some(bytes) => DocumentStore::load_bytes(&bytes).unwrap_or_else(|_| DocumentStore::new()),
+            None => DocumentStore::new(),
+        }
+    }
+
+    /// Fire-and-forget: doesn't block the caller on the IndexedDB write.
+    /// A no-op on the host test target (see `storage::save`'s native stub).
+    fn spawn_save(&self) {
+        // Cloning the doc lets us call `save()` (which needs `&mut self` in
+        // automerge 0.11) without requiring `spawn_save` itself to take
+        // `&mut self` and complicating its call sites.
+        let mut doc = self.doc.clone();
+        let bytes = doc.save();
+        #[cfg(target_arch = "wasm32")]
+        wasm_bindgen_futures::spawn_local(async move {
+            crate::storage::save(&bytes).await;
+        });
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = bytes;
     }
 
     pub fn load_bytes(bytes: &[u8]) -> Result<Self, automerge::AutomergeError> {

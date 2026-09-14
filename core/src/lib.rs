@@ -6,6 +6,7 @@ mod functions;
 mod engine;
 mod editor;
 mod document;
+mod storage;
 
 use wasm_bindgen::prelude::*;
 
