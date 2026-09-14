@@ -84,6 +84,44 @@ impl DocumentStore {
     }
 }
 
+impl DocumentStore {
+    /// Produces an independent copy that can diverge from `self` — stands
+    /// in for "peer B" in tests, since there's no networking yet to create
+    /// a real second peer. Automerge 0.11's `AutoCommit::fork` takes
+    /// `&mut self` (it needs to flush any open transaction before cloning
+    /// the underlying doc), so this does too.
+    pub fn fork(&mut self) -> Self {
+        let doc = self.doc.fork();
+        // fork() clones the document contents but not our cached ObjIds'
+        // validity guarantees across instances, so re-resolve them the
+        // same way `load_bytes` does.
+        let mut store = DocumentStore {
+            cells: get_or_create_map_immut(&doc, "cells"),
+            named_ranges: get_or_create_map_immut(&doc, "named_ranges"),
+            doc,
+            core: SpreadsheetCore::new(),
+        };
+        store.replay_all();
+        store
+    }
+
+    /// Merges `other`'s changes into `self` and replays the result. `other`
+    /// is left unchanged by Automerge's merge semantics on `self`'s side
+    /// only, so callers that want both sides converged call `merge` on
+    /// both stores with each other.
+    pub fn merge(&mut self, other: &mut DocumentStore) {
+        let _ = self.doc.merge(&mut other.doc);
+        self.replay_all();
+    }
+}
+
+fn get_or_create_map_immut(doc: &AutoCommit, key: &str) -> ObjId {
+    match doc.get(automerge::ROOT, key) {
+        Ok(Some((Value::Object(ObjType::Map), id))) => id,
+        _ => panic!("expected '{key}' map to already exist on a forked/loaded doc"),
+    }
+}
+
 fn get_or_create_map(doc: &mut AutoCommit, key: &str) -> ObjId {
     if let Ok(Some((Value::Object(ObjType::Map), id))) = doc.get(automerge::ROOT, key) {
         return id;
@@ -110,6 +148,64 @@ fn map_entries(doc: &AutoCommit, obj: &ObjId) -> Vec<(String, String)> {
 fn parse_range(s: &str) -> Option<(CellAddr, CellAddr)> {
     let (from_str, to_str) = s.split_once(':')?;
     Some((CellAddr::parse(from_str)?, CellAddr::parse(to_str)?))
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    fn a(reference: &str) -> CellAddr {
+        CellAddr::parse(reference).unwrap()
+    }
+
+    #[test]
+    fn edits_to_different_cells_on_two_forks_both_survive_a_merge() {
+        let mut a_store = DocumentStore::new();
+        a_store.set_cell("A1", "1");
+        let mut b_store = a_store.fork();
+
+        a_store.set_cell("B1", "2");
+        b_store.set_cell("C1", "3");
+
+        a_store.merge(&mut b_store);
+
+        assert_eq!(a_store.display(a("A1")), "1");
+        assert_eq!(a_store.display(a("B1")), "2");
+        assert_eq!(a_store.display(a("C1")), "3");
+    }
+
+    #[test]
+    fn offline_edits_on_both_sides_converge_after_merging_in_both_directions() {
+        let mut a_store = DocumentStore::new();
+        let mut b_store = a_store.fork();
+
+        a_store.set_cell("A1", "10");
+        b_store.set_cell("B1", "20");
+
+        a_store.merge(&mut b_store);
+        b_store.merge(&mut a_store);
+
+        assert_eq!(a_store.display(a("A1")), b_store.display(a("A1")));
+        assert_eq!(a_store.display(a("B1")), b_store.display(a("B1")));
+    }
+
+    #[test]
+    fn conflicting_edits_to_the_same_cell_resolve_deterministically_on_both_sides() {
+        let mut a_store = DocumentStore::new();
+        let mut b_store = a_store.fork();
+
+        // Both peers edit A1 independently while offline from each other.
+        a_store.set_cell("A1", "from-a");
+        b_store.set_cell("A1", "from-b");
+
+        a_store.merge(&mut b_store);
+        b_store.merge(&mut a_store);
+
+        // Automerge's default conflict resolution (last-writer-wins by
+        // change ordering) must pick the *same* value on every replica —
+        // that's the property under test, not which specific value wins.
+        assert_eq!(a_store.raw_input(a("A1")), b_store.raw_input(a("A1")));
+    }
 }
 
 #[cfg(test)]
