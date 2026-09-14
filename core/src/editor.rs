@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-use crate::engine::SpreadsheetCore;
+use crate::document::DocumentStore;
 use crate::model::CellAddr;
 
 // Must match the grid dimensions src/main.ts actually renders (COLS = 26,
@@ -62,12 +62,12 @@ impl Editor {
         self.point_cursor
     }
 
-    pub fn handle_key(&mut self, key: &str, core: &mut SpreadsheetCore) {
+    pub fn handle_key(&mut self, key: &str, store: &mut DocumentStore) {
         match self.mode {
-            Mode::Ready => self.handle_key_ready(key, core),
-            Mode::Edit => self.handle_key_edit(key, core),
-            Mode::Point => self.handle_key_point(key, core),
-            Mode::SlashMenu => self.handle_key_slash(key, core),
+            Mode::Ready => self.handle_key_ready(key, store),
+            Mode::Edit => self.handle_key_edit(key, store),
+            Mode::Point => self.handle_key_point(key, store),
+            Mode::SlashMenu => self.handle_key_slash(key, store),
             Mode::GoTo => self.handle_key_goto(key),
         }
     }
@@ -78,21 +78,21 @@ impl Editor {
         self.active = CellAddr { col: new_col, row: new_row };
     }
 
-    fn handle_key_ready(&mut self, key: &str, core: &mut SpreadsheetCore) {
+    fn handle_key_ready(&mut self, key: &str, store: &mut DocumentStore) {
         match key {
             "ArrowUp" => self.move_active(0, -1),
             "ArrowDown" => self.move_active(0, 1),
             "ArrowLeft" => self.move_active(-1, 0),
             "ArrowRight" => self.move_active(1, 0),
             "F2" => {
-                self.edit_buffer = core.raw_input(self.active);
+                self.edit_buffer = store.raw_input(self.active);
                 self.mode = Mode::Edit;
             }
             "F5" => {
                 self.goto_buffer.clear();
                 self.mode = Mode::GoTo;
             }
-            "F9" => core.recalculate_all(),
+            "F9" => store.recalculate_all(),
             "/" => {
                 self.slash_stage = SlashStage::MenuOpen;
                 self.mode = Mode::SlashMenu;
@@ -105,10 +105,10 @@ impl Editor {
         }
     }
 
-    fn handle_key_edit(&mut self, key: &str, core: &mut SpreadsheetCore) {
+    fn handle_key_edit(&mut self, key: &str, store: &mut DocumentStore) {
         match key {
             "Enter" => {
-                core.set_cell(&self.active.to_string(), &self.edit_buffer);
+                store.set_cell(&self.active.to_string(), &self.edit_buffer);
                 self.edit_buffer.clear();
                 self.move_active(0, 1);
                 self.mode = Mode::Ready;
@@ -125,14 +125,14 @@ impl Editor {
             {
                 self.point_cursor = self.active;
                 self.mode = Mode::Point;
-                self.handle_key_point(key, core);
+                self.handle_key_point(key, store);
             }
             k if k.chars().count() == 1 => self.edit_buffer.push_str(k),
             _ => {}
         }
     }
 
-    fn handle_key_point(&mut self, key: &str, core: &mut SpreadsheetCore) {
+    fn handle_key_point(&mut self, key: &str, store: &mut DocumentStore) {
         match key {
             "ArrowUp" => {
                 self.point_cursor = CellAddr {
@@ -164,7 +164,7 @@ impl Editor {
             }
             "Enter" => {
                 self.edit_buffer.push_str(&self.point_cursor.to_string());
-                core.set_cell(&self.active.to_string(), &self.edit_buffer);
+                store.set_cell(&self.active.to_string(), &self.edit_buffer);
                 self.edit_buffer.clear();
                 self.move_active(0, 1);
                 self.mode = Mode::Ready;
@@ -201,7 +201,7 @@ impl Editor {
         }
     }
 
-    fn handle_key_slash(&mut self, key: &str, core: &mut SpreadsheetCore) {
+    fn handle_key_slash(&mut self, key: &str, store: &mut DocumentStore) {
         match &mut self.slash_stage {
             SlashStage::MenuOpen => match key {
                 "r" | "R" => {
@@ -233,7 +233,7 @@ impl Editor {
             },
             SlashStage::NamingRange { range, buffer } => match key {
                 "Enter" => {
-                    core.define_named_range(buffer.clone(), range.0, range.1);
+                    store.define_named_range(buffer.clone(), range.0, range.1);
                     self.slash_stage = SlashStage::Closed;
                     self.mode = Mode::Ready;
                 }
@@ -286,194 +286,194 @@ mod tests {
 
     #[test]
     fn typing_a_value_and_enter_commits_it_and_moves_down() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("5", &mut core);
+        editor.handle_key("5", &mut store);
         assert_eq!(editor.mode(), Mode::Edit);
-        editor.handle_key("Enter", &mut core);
+        editor.handle_key("Enter", &mut store);
         assert_eq!(editor.mode(), Mode::Ready);
         assert_eq!(editor.active_cell(), a("A2"));
-        assert_eq!(core.display(a("A1")), "5");
+        assert_eq!(store.display(a("A1")), "5");
     }
 
     #[test]
     fn f2_reopens_an_existing_formula_for_editing() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("5", &mut core);
-        editor.handle_key("Enter", &mut core);
-        editor.handle_key("ArrowUp", &mut core);
+        editor.handle_key("5", &mut store);
+        editor.handle_key("Enter", &mut store);
+        editor.handle_key("ArrowUp", &mut store);
         assert_eq!(editor.active_cell(), a("A1"));
-        editor.handle_key("F2", &mut core);
+        editor.handle_key("F2", &mut store);
         assert_eq!(editor.mode(), Mode::Edit);
         assert_eq!(editor.edit_buffer(), "5");
-        editor.handle_key("Backspace", &mut core);
-        editor.handle_key("9", &mut core);
-        editor.handle_key("Enter", &mut core);
-        assert_eq!(core.display(a("A1")), "9");
+        editor.handle_key("Backspace", &mut store);
+        editor.handle_key("9", &mut store);
+        editor.handle_key("Enter", &mut store);
+        assert_eq!(store.display(a("A1")), "9");
     }
 
     #[test]
     fn f5_goto_jumps_the_active_cell() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("F5", &mut core);
+        editor.handle_key("F5", &mut store);
         assert_eq!(editor.mode(), Mode::GoTo);
         for c in "C10".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("Enter", &mut core);
+        editor.handle_key("Enter", &mut store);
         assert_eq!(editor.mode(), Mode::Ready);
         assert_eq!(editor.active_cell(), a("C10"));
     }
 
     #[test]
     fn point_mode_splices_cell_references_into_a_sum_formula() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("3", &mut core);
-        editor.handle_key("Enter", &mut core); // A1 = 3, active -> A2
-        editor.handle_key("4", &mut core);
-        editor.handle_key("Enter", &mut core); // A2 = 4, active -> A3
+        editor.handle_key("3", &mut store);
+        editor.handle_key("Enter", &mut store); // A1 = 3, active -> A2
+        editor.handle_key("4", &mut store);
+        editor.handle_key("Enter", &mut store); // A2 = 4, active -> A3
 
-        editor.handle_key("F5", &mut core);
+        editor.handle_key("F5", &mut store);
         for c in "B1".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("Enter", &mut core); // active -> B1
+        editor.handle_key("Enter", &mut store); // active -> B1
 
         for c in "@SUM(".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("ArrowLeft", &mut core); // enters POINT at B1, moves to A1
+        editor.handle_key("ArrowLeft", &mut store); // enters POINT at B1, moves to A1
         assert_eq!(editor.mode(), Mode::Point);
         assert_eq!(editor.point_cell(), a("A1"));
-        editor.handle_key(",", &mut core); // commits "A1," and returns to EDIT
+        editor.handle_key(",", &mut store); // commits "A1," and returns to EDIT
 
-        editor.handle_key("ArrowLeft", &mut core); // re-enters POINT at B1, moves to A1
-        editor.handle_key("ArrowDown", &mut core); // moves to A2
+        editor.handle_key("ArrowLeft", &mut store); // re-enters POINT at B1, moves to A1
+        editor.handle_key("ArrowDown", &mut store); // moves to A2
         assert_eq!(editor.point_cell(), a("A2"));
-        editor.handle_key(")", &mut core); // commits "A2)" and returns to EDIT
+        editor.handle_key(")", &mut store); // commits "A2)" and returns to EDIT
 
-        editor.handle_key("Enter", &mut core);
-        assert_eq!(core.display(a("B1")), "7");
+        editor.handle_key("Enter", &mut store);
+        assert_eq!(store.display(a("B1")), "7");
     }
 
     #[test]
     fn slash_range_name_defines_a_named_range_usable_in_a_formula() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("3", &mut core);
-        editor.handle_key("Enter", &mut core); // A1 = 3, active -> A2
-        editor.handle_key("4", &mut core);
-        editor.handle_key("Enter", &mut core); // A2 = 4, active -> A3
-        editor.handle_key("ArrowUp", &mut core);
-        editor.handle_key("ArrowUp", &mut core); // active -> A1
+        editor.handle_key("3", &mut store);
+        editor.handle_key("Enter", &mut store); // A1 = 3, active -> A2
+        editor.handle_key("4", &mut store);
+        editor.handle_key("Enter", &mut store); // A2 = 4, active -> A3
+        editor.handle_key("ArrowUp", &mut store);
+        editor.handle_key("ArrowUp", &mut store); // active -> A1
 
-        editor.handle_key("/", &mut core);
+        editor.handle_key("/", &mut store);
         assert_eq!(editor.mode(), Mode::SlashMenu);
-        editor.handle_key("r", &mut core); // /Range
-        editor.handle_key("ArrowDown", &mut core); // extend selection to A2
-        editor.handle_key("Enter", &mut core); // confirm range, prompt for name
+        editor.handle_key("r", &mut store); // /Range
+        editor.handle_key("ArrowDown", &mut store); // extend selection to A2
+        editor.handle_key("Enter", &mut store); // confirm range, prompt for name
         for c in "SALES".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("Enter", &mut core); // name committed
+        editor.handle_key("Enter", &mut store); // name committed
         assert_eq!(editor.mode(), Mode::Ready);
 
-        editor.handle_key("F5", &mut core);
+        editor.handle_key("F5", &mut store);
         for c in "B1".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("Enter", &mut core);
+        editor.handle_key("Enter", &mut store);
         for c in "@SUM(SALES)".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("Enter", &mut core);
-        assert_eq!(core.display(a("B1")), "7");
+        editor.handle_key("Enter", &mut store);
+        assert_eq!(store.display(a("B1")), "7");
     }
 
     #[test]
     fn circular_reference_reports_error_state_via_is_error() {
-        let mut core = SpreadsheetCore::new();
-        core.set_cell("A1", "=B1");
-        core.set_cell("B1", "=A1");
-        assert!(core.is_error(a("A1")));
+        let mut store = DocumentStore::new();
+        store.set_cell("A1", "=B1");
+        store.set_cell("B1", "=A1");
+        assert!(store.is_error(a("A1")));
     }
 
     #[test]
     fn unrecognized_key_in_picking_range_closes_slash_menu() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("/", &mut core);
+        editor.handle_key("/", &mut store);
         assert_eq!(editor.mode(), Mode::SlashMenu);
-        editor.handle_key("r", &mut core);
+        editor.handle_key("r", &mut store);
         // Now in PickingRange stage, send an unrecognized key
-        editor.handle_key("x", &mut core);
+        editor.handle_key("x", &mut store);
         assert_eq!(editor.mode(), Mode::Ready);
     }
 
     #[test]
     fn unrecognized_key_in_naming_range_closes_slash_menu() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("/", &mut core);
+        editor.handle_key("/", &mut store);
         assert_eq!(editor.mode(), Mode::SlashMenu);
-        editor.handle_key("r", &mut core);
-        editor.handle_key("Enter", &mut core);
+        editor.handle_key("r", &mut store);
+        editor.handle_key("Enter", &mut store);
         // Now in NamingRange stage, send an unrecognized key (function key)
-        editor.handle_key("F2", &mut core);
+        editor.handle_key("F2", &mut store);
         assert_eq!(editor.mode(), Mode::Ready);
     }
 
     #[test]
     fn arrow_right_thirty_times_from_a1_stops_at_column_z() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
         for _ in 0..30 {
-            editor.handle_key("ArrowRight", &mut core);
+            editor.handle_key("ArrowRight", &mut store);
         }
         assert_eq!(editor.active_cell(), a("Z1"));
     }
 
     #[test]
     fn arrow_down_many_times_from_a1_stops_at_row_100() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
         for _ in 0..150 {
-            editor.handle_key("ArrowDown", &mut core);
+            editor.handle_key("ArrowDown", &mut store);
         }
         assert_eq!(editor.active_cell(), a("A100"));
     }
 
     #[test]
     fn goto_an_out_of_bounds_address_does_not_move_the_active_cell() {
-        let mut core = SpreadsheetCore::new();
+        let mut store = DocumentStore::new();
         let mut editor = Editor::new();
-        editor.handle_key("F5", &mut core);
+        editor.handle_key("F5", &mut store);
         for c in "ZZ500".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("Enter", &mut core);
+        editor.handle_key("Enter", &mut store);
         assert_eq!(editor.mode(), Mode::Ready);
         assert_eq!(editor.active_cell(), a("A1"));
     }
 
     #[test]
     fn escape_in_point_mode_cancels_the_whole_edit() {
-        let mut core = SpreadsheetCore::new();
-        core.set_cell("A1", "5");
+        let mut store = DocumentStore::new();
+        store.set_cell("A1", "5");
         let mut editor = Editor::new();
-        editor.handle_key("F2", &mut core); // re-open A1 = "5" for editing
+        editor.handle_key("F2", &mut store); // re-open A1 = "5" for editing
         for c in "+".chars() {
-            editor.handle_key(&c.to_string(), &mut core);
+            editor.handle_key(&c.to_string(), &mut store);
         }
-        editor.handle_key("ArrowLeft", &mut core); // enters POINT mode
+        editor.handle_key("ArrowLeft", &mut store); // enters POINT mode
         assert_eq!(editor.mode(), Mode::Point);
 
-        editor.handle_key("Escape", &mut core);
+        editor.handle_key("Escape", &mut store);
         assert_eq!(editor.mode(), Mode::Ready);
         assert_eq!(editor.edit_buffer(), "");
-        assert_eq!(core.display(a("A1")), "5");
+        assert_eq!(store.display(a("A1")), "5");
     }
 }

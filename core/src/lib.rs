@@ -9,13 +9,13 @@ mod document;
 
 use wasm_bindgen::prelude::*;
 
+use document::DocumentStore;
 use editor::{Editor, Mode};
-use engine::SpreadsheetCore;
 use model::CellAddr;
 
 #[wasm_bindgen]
 pub struct Spreadsheet {
-    core: SpreadsheetCore,
+    store: DocumentStore,
     editor: Editor,
 }
 
@@ -23,30 +23,30 @@ pub struct Spreadsheet {
 impl Spreadsheet {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Spreadsheet {
-        Spreadsheet { core: SpreadsheetCore::new(), editor: Editor::new() }
+        Spreadsheet { store: DocumentStore::new(), editor: Editor::new() }
     }
 
     #[wasm_bindgen(js_name = setCell)]
     pub fn set_cell(&mut self, reference: &str, input: &str) {
-        self.core.set_cell(reference, input);
+        self.store.set_cell(reference, input);
     }
 
     #[wasm_bindgen(js_name = getDisplay)]
     pub fn get_display(&self, reference: &str) -> String {
         match CellAddr::parse(reference) {
-            Some(addr) => self.core.display(addr),
+            Some(addr) => self.store.display(addr),
             None => String::new(),
         }
     }
 
     #[wasm_bindgen(js_name = handleKey)]
     pub fn handle_key(&mut self, key: &str) {
-        self.editor.handle_key(key, &mut self.core);
+        self.editor.handle_key(key, &mut self.store);
     }
 
     #[wasm_bindgen(js_name = getMode)]
     pub fn get_mode(&self) -> String {
-        if self.editor.mode() == Mode::Ready && self.core.is_error(self.editor.active_cell()) {
+        if self.editor.mode() == Mode::Ready && self.store.is_error(self.editor.active_cell()) {
             return "ERROR".to_string();
         }
         mode_name(self.editor.mode()).to_string()
