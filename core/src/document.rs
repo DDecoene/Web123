@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-use automerge::{transaction::Transactable, AutoCommit, ObjId, ObjType, ReadDoc, Value, ValueRef, ScalarValue, ScalarValueRef};
+use automerge::{transaction::Transactable, AutoCommit, ObjId, ObjType, ReadDoc, Value, ValueRef, ScalarValueRef};
 
 use crate::engine::SpreadsheetCore;
 use crate::model::CellAddr;
