@@ -3,6 +3,11 @@
 use crate::engine::SpreadsheetCore;
 use crate::model::CellAddr;
 
+// Must match the grid dimensions src/main.ts actually renders (COLS = 26,
+// ROWS = 100): last column index for 'Z' and last row index for row 100.
+const MAX_COL: u32 = 25;
+const MAX_ROW: u32 = 99;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Mode {
     Ready,
@@ -68,8 +73,8 @@ impl Editor {
     }
 
     fn move_active(&mut self, d_col: i32, d_row: i32) {
-        let new_col = (self.active.col as i32 + d_col).max(0) as u32;
-        let new_row = (self.active.row as i32 + d_row).max(0) as u32;
+        let new_col = (self.active.col as i32 + d_col).max(0).min(MAX_COL as i32) as u32;
+        let new_row = (self.active.row as i32 + d_row).max(0).min(MAX_ROW as i32) as u32;
         self.active = CellAddr { col: new_col, row: new_row };
     }
 
@@ -136,7 +141,10 @@ impl Editor {
                 }
             }
             "ArrowDown" => {
-                self.point_cursor = CellAddr { col: self.point_cursor.col, row: self.point_cursor.row + 1 }
+                self.point_cursor = CellAddr {
+                    col: self.point_cursor.col,
+                    row: (self.point_cursor.row + 1).min(MAX_ROW),
+                }
             }
             "ArrowLeft" => {
                 self.point_cursor = CellAddr {
@@ -145,7 +153,14 @@ impl Editor {
                 }
             }
             "ArrowRight" => {
-                self.point_cursor = CellAddr { col: self.point_cursor.col + 1, row: self.point_cursor.row }
+                self.point_cursor = CellAddr {
+                    col: (self.point_cursor.col + 1).min(MAX_COL),
+                    row: self.point_cursor.row,
+                }
+            }
+            "Escape" => {
+                self.edit_buffer.clear();
+                self.mode = Mode::Ready;
             }
             "Enter" => {
                 self.edit_buffer.push_str(&self.point_cursor.to_string());
@@ -167,7 +182,9 @@ impl Editor {
         match key {
             "Enter" => {
                 if let Some(addr) = CellAddr::parse(&self.goto_buffer) {
-                    self.active = addr;
+                    if addr.col <= MAX_COL && addr.row <= MAX_ROW {
+                        self.active = addr;
+                    }
                 }
                 self.goto_buffer.clear();
                 self.mode = Mode::Ready;
@@ -407,5 +424,56 @@ mod tests {
         // Now in NamingRange stage, send an unrecognized key (function key)
         editor.handle_key("F2", &mut core);
         assert_eq!(editor.mode(), Mode::Ready);
+    }
+
+    #[test]
+    fn arrow_right_thirty_times_from_a1_stops_at_column_z() {
+        let mut core = SpreadsheetCore::new();
+        let mut editor = Editor::new();
+        for _ in 0..30 {
+            editor.handle_key("ArrowRight", &mut core);
+        }
+        assert_eq!(editor.active_cell(), a("Z1"));
+    }
+
+    #[test]
+    fn arrow_down_many_times_from_a1_stops_at_row_100() {
+        let mut core = SpreadsheetCore::new();
+        let mut editor = Editor::new();
+        for _ in 0..150 {
+            editor.handle_key("ArrowDown", &mut core);
+        }
+        assert_eq!(editor.active_cell(), a("A100"));
+    }
+
+    #[test]
+    fn goto_an_out_of_bounds_address_does_not_move_the_active_cell() {
+        let mut core = SpreadsheetCore::new();
+        let mut editor = Editor::new();
+        editor.handle_key("F5", &mut core);
+        for c in "ZZ500".chars() {
+            editor.handle_key(&c.to_string(), &mut core);
+        }
+        editor.handle_key("Enter", &mut core);
+        assert_eq!(editor.mode(), Mode::Ready);
+        assert_eq!(editor.active_cell(), a("A1"));
+    }
+
+    #[test]
+    fn escape_in_point_mode_cancels_the_whole_edit() {
+        let mut core = SpreadsheetCore::new();
+        core.set_cell("A1", "5");
+        let mut editor = Editor::new();
+        editor.handle_key("F2", &mut core); // re-open A1 = "5" for editing
+        for c in "+".chars() {
+            editor.handle_key(&c.to_string(), &mut core);
+        }
+        editor.handle_key("ArrowLeft", &mut core); // enters POINT mode
+        assert_eq!(editor.mode(), Mode::Point);
+
+        editor.handle_key("Escape", &mut core);
+        assert_eq!(editor.mode(), Mode::Ready);
+        assert_eq!(editor.edit_buffer(), "");
+        assert_eq!(core.display(a("A1")), "5");
     }
 }
