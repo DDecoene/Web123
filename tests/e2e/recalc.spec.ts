@@ -104,3 +104,32 @@ test('F5 GoTo jumps the active cell to a typed reference', async ({ page }) => {
 
   await expect(page.locator('#cell-C10')).toHaveClass(/active/);
 });
+
+test('the edit line shows the in-progress formula and clears once committed', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#edit-line')).toHaveText('');
+  await page.keyboard.type('@SUM(');
+  await expect(page.locator('#edit-line')).toHaveText('@SUM(');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#edit-line')).toHaveText('');
+});
+
+test('POINT mode highlights the pointed-at cell with the .pointing class', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.type('@SUM(');
+  await page.keyboard.press('ArrowDown'); // enters POINT, moves pointer to A2
+  await expect(page.locator('#mode-indicator')).toHaveText('POINT');
+  await expect(page.locator('#cell-A2')).toHaveClass(/pointing/);
+  await expect(page.locator('#cell-A1')).not.toHaveClass(/pointing/);
+});
+
+test('Ctrl-modified keys are not swallowed and are not forwarded to the sheet', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('c');
+  await page.keyboard.up('Control');
+
+  // The bare "c" must not have been forwarded into the cell as if typed.
+  await expect(page.locator('#mode-indicator')).toHaveText('READY');
+  await expect(page.locator('#cell-A1')).toHaveText('');
+});
