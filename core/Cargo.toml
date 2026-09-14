@@ -8,4 +8,5 @@ license = "PolyForm-Noncommercial-1.0.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+automerge = "0.11.0"
 wasm-bindgen = "0.2"
