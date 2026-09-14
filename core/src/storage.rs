@@ -12,6 +12,7 @@ mod wasm_impl {
     const DB_NAME: &str = "web123";
     const STORE_NAME: &str = "documents";
     const DOC_KEY: &str = "web123-doc";
+    const CORRUPT_DOC_KEY: &str = "web123-doc-corrupt";
 
     async fn open() -> Option<Rexie> {
         Rexie::builder(DB_NAME)
@@ -33,11 +34,24 @@ mod wasm_impl {
     }
 
     pub async fn save(bytes: &[u8]) {
+        save_to_key(bytes, DOC_KEY).await;
+    }
+
+    /// Stashes bytes that failed to load as a valid document under a
+    /// separate key, as a recovery safety net — otherwise the very next
+    /// `save()` (triggered by the user's next edit) would overwrite the
+    /// original bytes under `DOC_KEY` with a brand new empty document,
+    /// destroying any chance of manually recovering the original data.
+    pub async fn save_corrupt_backup(bytes: &[u8]) {
+        save_to_key(bytes, CORRUPT_DOC_KEY).await;
+    }
+
+    async fn save_to_key(bytes: &[u8], key: &str) {
         let Some(db) = open().await else { return };
         let Ok(tx) = db.transaction(&[STORE_NAME], TransactionMode::ReadWrite) else { return };
         let Ok(store) = tx.store(STORE_NAME) else { return };
         let array: JsValue = js_sys::Uint8Array::from(bytes).into();
-        let key = JsValue::from_str(DOC_KEY);
+        let key = JsValue::from_str(key);
         let _ = store.put(&array, Some(&key)).await;
         let _ = tx.done().await;
     }
@@ -50,9 +64,11 @@ mod native_stub {
     }
 
     pub async fn save(_bytes: &[u8]) {}
+
+    pub async fn save_corrupt_backup(_bytes: &[u8]) {}
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm_impl::{load, save};
+pub use wasm_impl::{load, save, save_corrupt_backup};
 #[cfg(not(target_arch = "wasm32"))]
-pub use native_stub::{load, save};
+pub use native_stub::{load, save, save_corrupt_backup};

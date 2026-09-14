@@ -9,8 +9,15 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 automerge = "0.11.0"
+# Enables the "wasm_js" feature on automerge's transitive getrandom
+# dependency, so the crate compiles for the real wasm32-unknown-unknown
+# target. Not used directly by our code — do not remove this even though
+# nothing in this crate calls into it directly, or the wasm32 build breaks.
 getrandom = { version = "0.4", features = ["wasm_js"] }
-js-sys = "0.3.105"
-rexie = "0.6.2"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.78"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3.105"
+rexie = "0.6.2"
+web-sys = { version = "0.3", features = ["console"] }

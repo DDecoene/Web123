@@ -112,4 +112,6 @@ async function main() {
   renderGrid(sheet);
 }
 
-main();
+main().catch((e) => {
+  console.error(e);
+});

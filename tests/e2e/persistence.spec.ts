@@ -20,4 +20,5 @@ test('a cell edit survives a page reload via IndexedDB', async ({ page }) => {
 test('a fresh browser context with no prior storage starts with an empty grid', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#cell-A1')).toHaveText('');
+  await expect(page.locator('#mode-indicator')).toHaveText('READY');
 });

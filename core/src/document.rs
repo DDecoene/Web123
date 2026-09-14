@@ -5,6 +5,23 @@ use automerge::{transaction::Transactable, AutoCommit, ObjId, ObjType, ReadDoc, 
 use crate::engine::SpreadsheetCore;
 use crate::model::CellAddr;
 
+/// A fixed, empty document skeleton (root map with "cells" and
+/// "named_ranges" child maps already created) that every new
+/// `DocumentStore` loads from, rather than creating those maps fresh.
+/// This gives every replica identical Automerge object identity for
+/// both maps from birth, which is required for two independently-
+/// created documents to converge correctly when merged — without this,
+/// each replica's maps would be separate objects that conflict (and
+/// one side's entire map becomes unreachable) on merge.
+const SCHEMA_SEED: &[u8] = &[
+    133, 111, 74, 131, 250, 67, 98, 205, 0, 124, 1, 16, 181, 236, 54, 249, 149, 224, 190, 204,
+    92, 120, 216, 147, 75, 250, 226, 6, 1, 34, 237, 145, 221, 227, 155, 70, 223, 125, 187, 106,
+    133, 160, 206, 23, 133, 209, 216, 30, 83, 44, 253, 87, 143, 181, 64, 184, 6, 21, 58, 21, 3,
+    6, 1, 2, 3, 2, 19, 2, 35, 2, 64, 2, 86, 2, 7, 21, 20, 33, 2, 35, 2, 52, 1, 66, 2, 86, 2, 128,
+    1, 2, 127, 0, 127, 1, 127, 2, 127, 0, 127, 0, 127, 7, 126, 5, 99, 101, 108, 108, 115, 12,
+    110, 97, 109, 101, 100, 95, 114, 97, 110, 103, 101, 115, 2, 0, 2, 1, 2, 2, 0, 2, 0, 2, 0, 0,
+];
+
 pub struct DocumentStore {
     doc: AutoCommit,
     cells: ObjId,
@@ -14,7 +31,7 @@ pub struct DocumentStore {
 
 impl DocumentStore {
     pub fn new() -> Self {
-        let mut doc = AutoCommit::new();
+        let mut doc = AutoCommit::load(SCHEMA_SEED).expect("schema seed is a valid Automerge document");
         let cells = get_or_create_map(&mut doc, "cells");
         let named_ranges = get_or_create_map(&mut doc, "named_ranges");
         DocumentStore { doc, cells, named_ranges, core: SpreadsheetCore::new() }
@@ -55,6 +72,8 @@ impl DocumentStore {
         self.spawn_save();
     }
 
+    // kept for a future P2P sync plan to call directly
+    #[allow(dead_code)]
     pub fn save_bytes(&mut self) -> Vec<u8> {
         self.doc.save()
     }
@@ -63,7 +82,17 @@ impl DocumentStore {
     /// there's nothing there yet (first run, or storage unavailable).
     pub async fn load_from_storage() -> Self {
         match crate::storage::load().await {
-            Some(bytes) => DocumentStore::load_bytes(&bytes).unwrap_or_else(|_| DocumentStore::new()),
+            Some(bytes) => match DocumentStore::load_bytes(&bytes) {
+                Ok(store) => store,
+                Err(_e) => {
+                    #[cfg(target_arch = "wasm32")]
+                    web_sys::console::error_1(
+                        &"Web123: stored document was corrupt or unreadable; starting a fresh document. The unreadable bytes were preserved under a backup key.".into(),
+                    );
+                    crate::storage::save_corrupt_backup(&bytes).await;
+                    DocumentStore::new()
+                }
+            },
             None => DocumentStore::new(),
         }
     }
@@ -97,7 +126,14 @@ impl DocumentStore {
     /// Automerge doc. Named ranges are replayed before cells so a formula
     /// cell referencing a name resolves on its first `set_cell` call rather
     /// than needing a later recalc pass.
+    ///
+    /// Re-resolves `cells`/`named_ranges` first so this is self-sufficient
+    /// regardless of which caller invoked it (`load_bytes`, `fork`, or
+    /// `merge`) — the cached ObjIds may be stale after loading a doc from
+    /// somewhere else.
     fn replay_all(&mut self) {
+        self.cells = get_or_create_map(&mut self.doc, "cells");
+        self.named_ranges = get_or_create_map(&mut self.doc, "named_ranges");
         let mut core = SpreadsheetCore::new();
         for (name, value) in map_entries(&self.doc, &self.named_ranges) {
             if let Some((from, to)) = parse_range(&value) {
@@ -111,6 +147,8 @@ impl DocumentStore {
     }
 }
 
+// kept for a future P2P sync plan to call directly
+#[allow(dead_code)]
 impl DocumentStore {
     /// Produces an independent copy that can diverge from `self` — stands
     /// in for "peer B" in tests, since there's no networking yet to create
@@ -123,8 +161,8 @@ impl DocumentStore {
         // validity guarantees across instances, so re-resolve them the
         // same way `load_bytes` does.
         let mut store = DocumentStore {
-            cells: get_or_create_map_immut(&doc, "cells"),
-            named_ranges: get_or_create_map_immut(&doc, "named_ranges"),
+            cells: resolve_map(&doc, "cells"),
+            named_ranges: resolve_map(&doc, "named_ranges"),
             doc,
             core: SpreadsheetCore::new(),
         };
@@ -136,13 +174,17 @@ impl DocumentStore {
     /// is left unchanged by Automerge's merge semantics on `self`'s side
     /// only, so callers that want both sides converged call `merge` on
     /// both stores with each other.
-    pub fn merge(&mut self, other: &mut DocumentStore) {
-        let _ = self.doc.merge(&mut other.doc);
+    pub fn merge(&mut self, other: &mut DocumentStore) -> Result<(), automerge::AutomergeError> {
+        self.doc.merge(&mut other.doc)?;
         self.replay_all();
+        Ok(())
     }
 }
 
-fn get_or_create_map_immut(doc: &AutoCommit, key: &str) -> ObjId {
+/// Looks up a map that's expected to already exist (on a forked or loaded
+/// doc) — panics rather than creating one, since a missing map there means
+/// the doc's schema is broken, not that it's the first time we've seen it.
+fn resolve_map(doc: &AutoCommit, key: &str) -> ObjId {
     match doc.get(automerge::ROOT, key) {
         Ok(Some((Value::Object(ObjType::Map), id))) => id,
         _ => panic!("expected '{key}' map to already exist on a forked/loaded doc"),
@@ -194,7 +236,7 @@ mod merge_tests {
         a_store.set_cell("B1", "2");
         b_store.set_cell("C1", "3");
 
-        a_store.merge(&mut b_store);
+        a_store.merge(&mut b_store).unwrap();
 
         assert_eq!(a_store.display(a("A1")), "1");
         assert_eq!(a_store.display(a("B1")), "2");
@@ -209,8 +251,8 @@ mod merge_tests {
         a_store.set_cell("A1", "10");
         b_store.set_cell("B1", "20");
 
-        a_store.merge(&mut b_store);
-        b_store.merge(&mut a_store);
+        a_store.merge(&mut b_store).unwrap();
+        b_store.merge(&mut a_store).unwrap();
 
         assert_eq!(a_store.display(a("A1")), b_store.display(a("A1")));
         assert_eq!(a_store.display(a("B1")), b_store.display(a("B1")));
@@ -225,13 +267,37 @@ mod merge_tests {
         a_store.set_cell("A1", "from-a");
         b_store.set_cell("A1", "from-b");
 
-        a_store.merge(&mut b_store);
-        b_store.merge(&mut a_store);
+        a_store.merge(&mut b_store).unwrap();
+        b_store.merge(&mut a_store).unwrap();
 
         // Automerge's default conflict resolution (last-writer-wins by
         // change ordering) must pick the *same* value on every replica —
         // that's the property under test, not which specific value wins.
         assert_eq!(a_store.raw_input(a("A1")), b_store.raw_input(a("A1")));
+    }
+
+    #[test]
+    fn independently_created_documents_converge_on_merge() {
+        // Unlike the tests above, these two stores are NOT forked from one
+        // another — each comes from its own `DocumentStore::new()` call, the
+        // way two users who each open the app fresh (empty IndexedDB) would
+        // end up with two independently-created documents. Before the
+        // schema-seed fix, each store's "cells"/"named_ranges" maps were
+        // distinct Automerge objects, so merging them would silently drop
+        // one side's entire cell map instead of converging.
+        let mut a_store = DocumentStore::new();
+        let mut b_store = DocumentStore::new();
+
+        a_store.set_cell("A1", "from-a");
+        b_store.set_cell("B1", "from-b");
+
+        a_store.merge(&mut b_store).unwrap();
+        b_store.merge(&mut a_store).unwrap();
+
+        assert_eq!(a_store.raw_input(a("A1")), "from-a");
+        assert_eq!(a_store.raw_input(a("B1")), "from-b");
+        assert_eq!(b_store.raw_input(a("A1")), "from-a");
+        assert_eq!(b_store.raw_input(a("B1")), "from-b");
     }
 }
 
@@ -299,5 +365,10 @@ mod tests {
         let bytes = store.save_bytes();
         let loaded = DocumentStore::load_bytes(&bytes).unwrap();
         assert_eq!(loaded.display(a("B1")), "7");
+    }
+
+    #[test]
+    fn load_bytes_rejects_corrupt_data() {
+        assert!(DocumentStore::load_bytes(b"not a valid automerge document").is_err());
     }
 }
