@@ -58,6 +58,27 @@ impl SpreadsheetCore {
 
     pub fn define_named_range(&mut self, name: String, from: CellAddr, to: CellAddr) {
         self.named_ranges.insert(name, (from, to));
+        self.rebuild_all_edges();
+        self.recalculate_all();
+    }
+
+    /// Rebuilds the entire dependents graph from scratch by re-deriving edges
+    /// for every stored formula cell. The grid is small (26x100), so this is
+    /// cheap and avoids the need to track which formulas reference which
+    /// named range individually.
+    fn rebuild_all_edges(&mut self) {
+        self.dependents.clear();
+        let formula_cells: Vec<CellAddr> = self
+            .stored
+            .iter()
+            .filter(|(_, v)| matches!(v, CellValue::Formula(_)))
+            .map(|(&addr, _)| addr)
+            .collect();
+        for addr in formula_cells {
+            if let Some(value) = self.stored.get(&addr).cloned() {
+                self.add_edges_for(addr, &value);
+            }
+        }
     }
 
     pub fn recalculate_all(&mut self) {
@@ -167,7 +188,23 @@ impl CellLookup for SpreadsheetCore {
 }
 
 fn format_number(n: f64) -> String {
-    format!("{n}")
+    if !n.is_finite() {
+        return format!("{n}");
+    }
+    // Round to a reasonable number of significant digits before display so
+    // ordinary binary floating-point noise (e.g. 0.1 + 0.2) doesn't leak
+    // through, while still preserving large/small magnitudes and exact
+    // integers.
+    let mut s = format!("{n:.10}");
+    if s.contains('.') {
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+    }
+    s
 }
 
 fn referenced_cells(
@@ -281,5 +318,54 @@ mod tests {
         core.set_cell("B1", "9");
         core.set_cell("A1", "100");
         assert_eq!(core.display(a("B1")), "9");
+    }
+
+    #[test]
+    fn defining_a_named_range_after_the_formula_that_uses_it_resolves_without_f9() {
+        let mut core = SpreadsheetCore::new();
+        core.set_cell("A1", "3");
+        core.set_cell("A2", "4");
+        core.set_cell("B1", "@SUM(SALES)");
+        // Formula defined before the name exists should be ERR until the
+        // name is defined - and should then resolve immediately, without
+        // needing recalculate_all()/F9, and should keep tracking edits.
+        assert_eq!(core.display(a("B1")), "ERR");
+        core.define_named_range("SALES".to_string(), a("A1"), a("A2"));
+        assert_eq!(core.display(a("B1")), "7");
+        core.set_cell("A1", "10");
+        assert_eq!(core.display(a("B1")), "14");
+    }
+
+    #[test]
+    fn redefining_a_named_range_drops_the_old_dependency_and_picks_up_the_new_range() {
+        let mut core = SpreadsheetCore::new();
+        core.set_cell("A1", "3");
+        core.set_cell("A2", "4");
+        core.set_cell("C1", "100");
+        core.define_named_range("SALES".to_string(), a("A1"), a("A2"));
+        core.set_cell("B1", "@SUM(SALES)");
+        assert_eq!(core.display(a("B1")), "7");
+
+        // Redefine SALES to point at C1:C1 instead.
+        core.define_named_range("SALES".to_string(), a("C1"), a("C1"));
+        assert_eq!(core.display(a("B1")), "100");
+
+        // Editing a cell only in the OLD range must no longer affect B1.
+        core.set_cell("A1", "999");
+        assert_eq!(core.display(a("B1")), "100");
+
+        // Editing a cell in the NEW range must affect B1.
+        core.set_cell("C1", "5");
+        assert_eq!(core.display(a("B1")), "5");
+    }
+
+    #[test]
+    fn format_number_trims_floating_point_noise() {
+        assert_eq!(format_number(0.1 + 0.2), "0.3");
+        assert_eq!(format_number(42.0), "42");
+        assert_eq!(format_number(-5.0), "-5");
+        let third = format_number(1.0 / 3.0);
+        assert!(third.len() <= 13, "expected a short display, got {third}");
+        assert!(!third.contains("333333333333314"), "float noise leaked through: {third}");
     }
 }
