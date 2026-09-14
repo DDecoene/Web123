@@ -67,6 +67,11 @@ impl Spreadsheet {
     pub fn get_point_cell(&self) -> String {
         self.editor.point_cell().to_string()
     }
+
+    #[wasm_bindgen(js_name = loadFromStorage)]
+    pub async fn load_from_storage(&mut self) {
+        self.store = DocumentStore::load_from_storage().await;
+    }
 }
 
 fn mode_name(m: Mode) -> &'static str {
