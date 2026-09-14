@@ -97,8 +97,9 @@ window.addEventListener('keydown', (e) => {
 
 async function main() {
   await init();
-  sheet = new Spreadsheet();
-  await sheet.loadFromStorage();
+  const newSheet = new Spreadsheet();
+  await newSheet.loadFromStorage();
+  sheet = newSheet;
 
   const gridContainer = document.querySelector<HTMLDivElement>('#grid-container')!;
   buildGrid(gridContainer);
